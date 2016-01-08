@@ -102,21 +102,27 @@ x,y,keep_prob = input_placeholders(FLAGS.n_input,FLAGS.n_classes)
 weights,biases = paramters_variables(FLAGS.n_classes)
 pred = feed_forward(x,weights,biases,keep_prob)
 cost = loss_fun(pred,y)
+cost_summ = tf.scalar_summary("loss summary",cost)
 optimizer = optimizer_fun(FLAGS.learning_rate,cost)
 correct_pred,accuracy = evaluate(pred,y)
+accuracy_summary = tf.scalar_summary("accuracy",accuracy)
 
 #initialization
 init = tf.initialize_all_variables()
 
 with tf.Session() as sess:
     sess.run(init)
+    merged = tf.merge_all_summaries()
     summary_writer = tf.train.SummaryWriter('./tensorflow_logs', graph_def=sess.graph_def)
     step = 1
     while step * FLAGS.batch_size < FLAGS.max_steps:
         batch_xs,batch_ys = mnist.train.next_batch(FLAGS.batch_size)
         sess.run(optimizer,feed_dict={x:batch_xs,y:batch_ys,keep_prob:FLAGS.dropout})
         if step%FLAGS.display_frequency == 0:
-            acc = sess.run(accuracy,feed_dict={x:batch_xs,y:batch_ys,keep_prob:1.})
+            result = sess.run([merged,accuracy],feed_dict={x:batch_xs,y:batch_ys,keep_prob:1.})
+            summary_str = result[0]
+            acc = result[1]
+            summary_writer.add_summary(summary_str,step*FLAGS.batch_size)
             loss = sess.run(cost,feed_dict={x:batch_xs,y:batch_ys,keep_prob:1.})
             print "Iter "+str(step*FLAGS.batch_size) + ", Minibatch Loss= "+"{:.6f}".format(loss)+ ", Training Accuracy= " + "{:.5f}".format(acc)
         step += 1
