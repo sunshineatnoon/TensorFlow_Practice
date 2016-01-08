@@ -92,20 +92,20 @@ void main(){
   GoogleNet.layers[27] = make_layer(0,0,0,0,0,SOFTMAX);
   GoogleNet.layers[28] = make_layer(0,0,0,0,0,COST);
 
+  float learning_rate,momentum,decay;
+  int seen;
   if((file = fopen("extraction.weights","r")) != NULL){
-    float learning_rate,momentum,decay;
-    int seen;
     fread(&learning_rate, sizeof(float), 1, file);
     fread(&momentum, sizeof(float), 1, file);
     fread(&decay, sizeof(float), 1, file);
     fread(&seen, sizeof(int), 1, file);
     printf("The three numbers read from the file are: %f,%f,%f,%d\n",learning_rate,momentum,decay,seen);
 
-    int i;
+    int i,num;
     for(i = 0;i < GoogleNet.layer_number;i++){
       layer l = GoogleNet.layers[i];
       if(l.type == CONVOLUTIONAL){
-        int num = l.n*l.c*l.size*l.size;
+        num = l.n*l.c*l.size*l.size;
         fread(l.biases, sizeof(float), l.n, file);
         fread(l.weights, sizeof(float), num, file);
       }else if(l.type == CONNECTED){
@@ -114,7 +114,28 @@ void main(){
       }
       printf("%d. (%d,%d,%d,%d,%d)\n",i+1,l.size,l.n,l.c,l.h,l.w);
     }
+    fclose(file);
+    //If I read these weights correctly, then when I write them back, the weights should work well as before
+    FILE *fp = fopen("reconstruct.weights","w");
+    fwrite(&learning_rate, sizeof(float), 1, fp);
+    fwrite(&momentum, sizeof(float), 1, fp);
+    fwrite(&decay, sizeof(float), 1, fp);
+    fwrite(&seen, sizeof(int), 1, fp);
+
+    for(i = 0;i < GoogleNet.layer_number;i++){
+      layer l = GoogleNet.layers[i];
+      if(l.type == CONVOLUTIONAL){
+        num = l.n*l.c*l.size*l.size;
+        fwrite(l.biases, sizeof(float), l.n, fp);
+        fwrite(l.weights, sizeof(float), num, fp);
+      }else if(l.type == CONNECTED){
+        fwrite(l.biases, sizeof(float), l.output_size, fp);
+        fwrite(l.weights, sizeof(float), l.output_size*l.input_size, fp);
+      }
+    }
+    fclose(fp);
   }
-  //If I read these weights correctly, then when I write them back, the weights should work well as before,let's try!
-  
+
+
+
 }
