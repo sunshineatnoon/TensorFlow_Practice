@@ -1,5 +1,11 @@
 import tensorflow as tf
 import numpy as np
+import os,sys
+import collections
+sys.path.append(os.getcwd())
+from utils.PythonReader import ReadGoogleNetWeights
+from PIL import Image
+from scipy import misc
 
 #hyperparameters
 flags = tf.app.flags
@@ -17,6 +23,10 @@ flags.DEFINE_integer('height',224,'Height of input images')
 flags.DEFINE_integer('width',224,'Width of input images')
 flags.DEFINE_integer('channels',3,'Channel number of input vector')
 
+def leaky_relu(m):
+    index = m < 0
+    m[index] = m[index] * 0.1
+    return m
 
 def input_placeholders(height,width,channels,n_classes):
     """
@@ -35,27 +45,27 @@ def paramters_variables(n_classes):
       biases: biases variables of each layer
     """
     weights = {
-        'wc2':tf.Variable(tf.random_normal([7,7,3,64])),
-        'wc4':tf.Variable(tf.random_normal([3,3,64,192])),
-        'wc6':tf.Variable(tf.random_normal([1,1,192,128])),
-        'wc7':tf.Variable(tf.random_normal([3,3,128,256])),
-        'wc8':tf.Variable(tf.random_normal([1,1,256,256])),
-        'wc9':tf.Variable(tf.random_normal([3,3,256,512])),
-        'wc11':tf.Variable(tf.random_normal([1,1,512,256])),
-        'wc12':tf.Variable(tf.random_normal([3,3,256,512])),
-        'wc13':tf.Variable(tf.random_normal([1,1,512,256])),
-        'wc14':tf.Variable(tf.random_normal([3,3,256,512])),
-        'wc15':tf.Variable(tf.random_normal([1,1,512,256])),
-        'wc16':tf.Variable(tf.random_normal([3,3,256,512])),
-        'wc17':tf.Variable(tf.random_normal([1,1,512,256])),
-        'wc18':tf.Variable(tf.random_normal([3,3,256,512])),
-        'wc19':tf.Variable(tf.random_normal([1,1,512,512])),
-        'wc20':tf.Variable(tf.random_normal([3,3,512,1024])),
-        'wc22':tf.Variable(tf.random_normal([1,1,1024,512])),
-        'wc23':tf.Variable(tf.random_normal([3,3,512,1024])),
-        'wc24':tf.Variable(tf.random_normal([1,1,1024,512])),
-        'wc25':tf.Variable(tf.random_normal([3,3,512,1024])),
-        'wd27':tf.Variable(tf.random_normal([1024,1000])),
+        'wc2':tf.Variable(tf.random_normal([7*7*3*64])),
+        'wc4':tf.Variable(tf.random_normal([3*3*64*192])),
+        'wc6':tf.Variable(tf.random_normal([1*1*192*128])),
+        'wc7':tf.Variable(tf.random_normal([3*3*128*256])),
+        'wc8':tf.Variable(tf.random_normal([1*1*256*256])),
+        'wc9':tf.Variable(tf.random_normal([3*3*256*512])),
+        'wc11':tf.Variable(tf.random_normal([1*1*512*256])),
+        'wc12':tf.Variable(tf.random_normal([3*3*256*512])),
+        'wc13':tf.Variable(tf.random_normal([1*1*512*256])),
+        'wc14':tf.Variable(tf.random_normal([3*3*256*512])),
+        'wc15':tf.Variable(tf.random_normal([1*1*512*256])),
+        'wc16':tf.Variable(tf.random_normal([3*3*256*512])),
+        'wc17':tf.Variable(tf.random_normal([1*1*512*256])),
+        'wc18':tf.Variable(tf.random_normal([3*3*256*512])),
+        'wc19':tf.Variable(tf.random_normal([1*1*512*512])),
+        'wc20':tf.Variable(tf.random_normal([3*3*512*1024])),
+        'wc22':tf.Variable(tf.random_normal([1*1*1024*512])),
+        'wc23':tf.Variable(tf.random_normal([3*3*512*1024])),
+        'wc24':tf.Variable(tf.random_normal([1*1*1024*512])),
+        'wc25':tf.Variable(tf.random_normal([3*3*512*1024])),
+        'wd27':tf.Variable(tf.random_normal([1024*1000])),
     }
     biases = {
         'bc2':tf.Variable(tf.random_normal([64])),
@@ -67,7 +77,7 @@ def paramters_variables(n_classes):
         'bc11':tf.Variable(tf.random_normal([256])),
         'bc12':tf.Variable(tf.random_normal([512])),
         'bc13':tf.Variable(tf.random_normal([256])),
-        'bc14':tf.Variable(tf.random_normal([512)),
+        'bc14':tf.Variable(tf.random_normal([512])),
         'bc15':tf.Variable(tf.random_normal([256])),
         'bc16':tf.Variable(tf.random_normal([512])),
         'bc17':tf.Variable(tf.random_normal([256])),
@@ -83,7 +93,7 @@ def paramters_variables(n_classes):
     return weights,biases
 
 def conv2d(img,w,b,k):
-    return tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(img,w,strides=[1,k,k,1],padding='SAME'),b))
+    return leaky_relu(tf.nn.bias_add(tf.nn.conv2d(img,w,strides=[1,k,k,1],padding='SAME'),b))
 
 def max_pool(img,k):
     return tf.nn.max_pool(img,ksize=[1,k,k,1],strides=[1,k,k,1],padding='SAME')
@@ -100,11 +110,12 @@ def feed_forward(_X,_weights,_biases):
     Return:
       out: Predictions of the forward pass
     """
+    _X = tf.cast(_X,tf.float32)
     _X = tf.reshape(_X,[-1,224,224,3])
 
     #Convolutional Layer 2, CROP is the first layer
     conv2 = conv2d(_X,_weights['wc2'],_biases['bc2'],2)
-    conv2 = max_pool(conv1,k=2)
+    conv2 = max_pool(conv2,k=2)
 
     #Convolutional Layer 4
     conv4 = conv2d(conv2,_weights['wc4'],_biases['bc4'],1)
@@ -139,6 +150,75 @@ def feed_forward(_X,_weights,_biases):
 
     #Fully Connected Layer 1
     dense1 = tf.reshape(conv25,[-1,_weights['wd27'].get_shape().as_list()[0]])
-    dense1 = tf.nn.relu(tf.add(tf.matmul(dense1,_weights['wd27']),_biases['bd27']))
+    dense1 = tf.leaky_relu(tf.add(tf.matmul(dense1,_weights['wd27']),_biases['bd27']))
 
     return dense1
+
+def assign_weights_func(layer_number,weights,layer_name):
+    l = googleNet.layers[layer_number]
+    weights[layer_name] = tf.assign(weights[layer_name],l.weights)
+    if(l.type == "CONVOLUTIONAL"):
+        weights[layer_name] = tf.reshape(weights[layer_name],[l.n,l.c,l.size,l.size])
+        weights[layer_name] = tf.transpose(weights[layer_name],[2,3,1,0])
+    elif(l.type == "CONNECTED"):
+        weights[layer_name] = tf.reshape(weights[layer_name],[l.input_size,l.output_size])
+    return weights[layer_name]
+
+def assign_biases_func(layer_number,biases,layer_name):
+    l = googleNet.layers[layer_number]
+    biases[layer_name] = tf.assign(biases[layer_name],l.biases)
+    return biases[layer_name]
+
+#read an image
+im = Image.open('/home/lixueting/Documents/TensorFlow_Practice/eagle.jpg')
+ImageSize = im.size
+print im.size
+WARP_LENGTH = 224
+if(ImageSize[0] <= ImageSize[1]):
+    width = int(ImageSize[1] * WARP_LENGTH / ImageSize[0])
+    im = im.resize((WARP_LENGTH,width),Image.ANTIALIAS)
+else:
+    height = int(ImageSize[0] * WARP_LENGTH / ImageSize[1])
+    im = im.resize((height,WARP_LENGTH),Image.ANTIALIAS)
+im.save('eagle_resize.jpg')
+
+img = misc.imread('eagle_resize.jpg')
+img_tf = tf.Variable(img)
+img_tf = tf.image.resize_image_with_crop_or_pad(img_tf, 224, 224)
+#img_tf = tf.cast(img_tf, tf.float32)
+
+#Read and assign weights
+weights,biases = paramters_variables(FLAGS.n_classes)
+googleNet = ReadGoogleNetWeights(os.path.join(os.getcwd(),'extraction.weights'))
+
+for i in range(googleNet.layer_number):
+    l = googleNet.layers[i]
+    if(l.type == "CONVOLUTIONAL"):
+        weights['wc'+str(i+1)] = assign_weights_func(i,weights,'wc'+str(i+1))
+        biases['wd'+str(i+1)] = assign_biases_func(i,biases,'bc'+str(i+1))
+    elif(l.type == "CONNECTED"):
+        weights['wc'+str(i+1)] = assign_weights_func(i,weights,'wd'+str(i+1))
+        biases['wd'+str(i+1)] = assign_biases_func(i,biases,'bd'+str(i+1))
+
+#feed forward process
+out = feed_forward(img_tf,weights,biases)
+
+sess = tf.Session()
+sess.run(tf.initialize_all_variables())
+four = sess.run([weights['wc2'],weights['wc4'],weights['wc6'],weights['wc7'],weights['wc8'],weights['wc9'],weights['wc11'],
+                weights['wc12'],weights['wc13'],weights['wc14'],weights['wc15'],weights['wc16'],weights['wc17'],weights['wc18'],
+                weights['wc19'],weights['wc20'],weights['wc22'],weights['wc23'],weights['wc24'],weights['wc25'],weights['wd27'],
+                biases['bc2'],biases['bc4'],biases['bc6'],biases['bc7'],biases['bc8'],biases['bc9'],biases['bc11'],
+                biases['bc12'],biases['bc13'],biases['bc14'],biases['bc15'],biases['bc16'],biases['bc17'],biases['bc18'],
+                biases['bc19'],biases['bc20'],biases['bc22'],biases['bc23'],biases['bc24'],biases['bc25'],biases['bd27'],out,img_tf])
+print np.argmax(four[42])
+print four[42]
+
+
+import matplotlib.pyplot as plt
+fig = plt.figure()
+fig.add_subplot(1,2,1)
+plt.imshow(im)
+fig.add_subplot(1,2,2)
+plt.imshow(four[43])
+plt.show()
