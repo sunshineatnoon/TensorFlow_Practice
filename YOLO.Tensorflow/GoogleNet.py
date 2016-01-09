@@ -82,84 +82,63 @@ def paramters_variables(n_classes):
     }
     return weights,biases
 
-def conv2d(img,w,b):
-    return tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(img,w,strides=[1,1,1,1],padding='SAME'),b))
+def conv2d(img,w,b,k):
+    return tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(img,w,strides=[1,k,k,1],padding='SAME'),b))
 
 def max_pool(img,k):
     return tf.nn.max_pool(img,ksize=[1,k,k,1],strides=[1,k,k,1],padding='SAME')
 
-def feed_forward(_X,_weights,_biases,_dropout):
+def avg_pool(img,k):
+    return tf.nn.avg_pool(img,ksize=[1,k,k,1],strides=[1,k,k,1],padding='SAME')
+
+def feed_forward(_X,_weights,_biases):
     """
     Args:
       _X: batch of images placeholders
       _weights: weight variables
       _biases: biases variables
-      _dropout: keep probability
     Return:
       out: Predictions of the forward pass
     """
-    _X = tf.reshape(_X,[-1,28,28,1])
+    _X = tf.reshape(_X,[-1,224,224,3])
 
-    #Convolutional Layer 1
-    conv1 = conv2d(_X,_weights['wc1'],_biases['bc1'])
-    conv1 = max_pool(conv1,k=2)
-    conv1 = tf.nn.dropout(conv1,_dropout)
+    #Convolutional Layer 2, CROP is the first layer
+    conv2 = conv2d(_X,_weights['wc2'],_biases['bc2'],2)
+    conv2 = max_pool(conv1,k=2)
 
-    #Convolutional Layer 2
-    conv2 = conv2d(conv1,_weights['wc2'],_biases['bc2'])
-    conv2 = max_pool(conv2,k=2)
-    conv2 = tf.nn.dropout(conv2,_dropout)
+    #Convolutional Layer 4
+    conv4 = conv2d(conv2,_weights['wc4'],_biases['bc4'],1)
+    conv4 = max_pool(conv4,k=2)
+
+    #Convolutional Layer 6~9
+    conv6 = conv2d(conv4,_weights['wc6'],_biases['bc6'],1)
+    conv7 = conv2d(conv6,_weights['wc7'],_biases['bc7'],1)
+    conv8 = conv2d(conv7,_weights['wc8'],_biases['bc8'],1)
+    conv9 = conv2d(conv8,_weights['wc9'],_biases['bc9'],1)
+    conv9 = max_pool(conv9,k=2)
+
+    #Convolutional Layer 11~20
+    conv11 = conv2d(conv9,_weights['wc11'],_biases['bc11'],1)
+    conv12 = conv2d(conv11,_weights['wc12'],_biases['bc12'],1)
+    conv13 = conv2d(conv12,_weights['wc13'],_biases['bc13'],1)
+    conv14 = conv2d(conv13,_weights['wc14'],_biases['bc14'],1)
+    conv15 = conv2d(conv14,_weights['wc15'],_biases['bc15'],1)
+    conv16 = conv2d(conv15,_weights['wc16'],_biases['bc16'],1)
+    conv17 = conv2d(conv16,_weights['wc17'],_biases['bc17'],1)
+    conv18 = conv2d(conv17,_weights['wc18'],_biases['bc18'],1)
+    conv19 = conv2d(conv18,_weights['wc19'],_biases['bc19'],1)
+    conv20 = conv2d(conv19,_weights['wc20'],_biases['bc20'],1)
+    conv20 = max_pool(conv20,k=2)
+
+    #Convolutional Layer 22~25
+    conv22 = conv2d(conv20,_weights['wc22'],_biases['bc22'],1)
+    conv23 = conv2d(conv22,_weights['wc23'],_biases['bc23'],1)
+    conv24 = conv2d(conv23,_weights['wc24'],_biases['bc24'],1)
+    conv25 = conv2d(conv24,_weights['wc25'],_biases['bc25'],1)
+    conv25 = tf.nn.avg_pool(conv25,ksize=[1,7,7,1],strides=[1,7,7,1],padding='SAME')
 
     #Fully Connected Layer 1
-    dense1 = tf.reshape(conv2,[-1,_weights['wd1'].get_shape().as_list()[0]])
-    dense1 = tf.nn.relu(tf.add(tf.matmul(dense1,_weights['wd1']),_biases['bd1']))
-    dense1 = tf.nn.dropout(dense1,_dropout)
+    dense1 = tf.reshape(conv25,[-1,_weights['wd27'].get_shape().as_list()[0]])
+    dense1 = tf.nn.relu(tf.add(tf.matmul(dense1,_weights['wd27']),_biases['bd27']))
 
-    #Prediction Layer
-    out = tf.add(tf.matmul(dense1,_weights['out']),_biases['out'])
-    return out
-
-def loss_fun(pred,y):
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred,y))
-    return loss
-
-def optimizer_fun(learning_rate,loss):
-    optimizer = tf.train.AdagradOptimizer(learning_rate=learning_rate).minimize(loss)
-    return optimizer
-
-def evaluate(pred,y):
-    correct_pred = tf.equal(tf.argmax(pred,1),tf.argmax(y,1))
-    accuracy = tf.reduce_mean(tf.cast(correct_pred,tf.float32))
-    return correct_pred,accuracy
-
-mnist = input_data.read_data_sets(FLAGS.train_dir,one_hot=True)
-#define graph
-x,y,keep_prob = input_placeholders(FLAGS.n_input,FLAGS.n_classes)
-weights,biases = paramters_variables(FLAGS.n_classes)
-pred = feed_forward(x,weights,biases,keep_prob)
-cost = loss_fun(pred,y)
-cost_summ = tf.scalar_summary("loss summary",cost)
-optimizer = optimizer_fun(FLAGS.learning_rate,cost)
-correct_pred,accuracy = evaluate(pred,y)
-accuracy_summary = tf.scalar_summary("accuracy",accuracy)
-
-#initialization
-init = tf.initialize_all_variables()
-
-with tf.Session() as sess:
-    sess.run(init)
-    merged = tf.merge_all_summaries()
-    summary_writer = tf.train.SummaryWriter('./tensorflow_logs', graph_def=sess.graph_def)
-    step = 1
-    while step * FLAGS.batch_size < FLAGS.max_steps:
-        batch_xs,batch_ys = mnist.train.next_batch(FLAGS.batch_size)
-        sess.run(optimizer,feed_dict={x:batch_xs,y:batch_ys,keep_prob:FLAGS.dropout})
-        if step%FLAGS.display_frequency == 0:
-            result = sess.run([merged,accuracy],feed_dict={x:batch_xs,y:batch_ys,keep_prob:1.})
-            summary_str = result[0]
-            acc = result[1]
-            summary_writer.add_summary(summary_str,step*FLAGS.batch_size)
-            loss = sess.run(cost,feed_dict={x:batch_xs,y:batch_ys,keep_prob:1.})
-            print "Iter "+str(step*FLAGS.batch_size) + ", Minibatch Loss= "+"{:.6f}".format(loss)+ ", Training Accuracy= " + "{:.5f}".format(acc)
-        step += 1
-    print "Testing Accuracy:", sess.run(accuracy, feed_dict={x: mnist.test.images[:256], y: mnist.test.labels[:256], keep_prob: 1.})
+    return dense1
