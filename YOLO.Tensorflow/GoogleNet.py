@@ -23,10 +23,12 @@ flags.DEFINE_integer('height',224,'Height of input images')
 flags.DEFINE_integer('width',224,'Width of input images')
 flags.DEFINE_integer('channels',3,'Channel number of input vector')
 
+def crop(m,scale=2.0):
+    trans = np.ones((1,224,224,3))
+    return tf.add(tf.mul(m,scale),-1.0*trans)
+
 def leaky_relu(m):
-    index = m < 0
-    m[index] = m[index] * 0.1
-    return m
+    return tf.maximum(0.1*m,m)
 
 def input_placeholders(height,width,channels,n_classes):
     """
@@ -112,13 +114,15 @@ def feed_forward(_X,_weights,_biases):
     """
     _X = tf.cast(_X,tf.float32)
     _X = tf.reshape(_X,[-1,224,224,3])
+    cropped = crop(_X)
 
     #Convolutional Layer 2, CROP is the first layer
-    conv2 = conv2d(_X,_weights['wc2'],_biases['bc2'],2)
-    conv2 = max_pool(conv2,k=2)
+    conv2 = conv2d(cropped,_weights['wc2'],_biases['bc2'],2)
+
+    conv2_pooled = max_pool(conv2,k=2)
 
     #Convolutional Layer 4
-    conv4 = conv2d(conv2,_weights['wc4'],_biases['bc4'],1)
+    conv4 = conv2d(conv2_pooled,_weights['wc4'],_biases['bc4'],1)
     conv4 = max_pool(conv4,k=2)
 
     #Convolutional Layer 6~9
@@ -150,16 +154,18 @@ def feed_forward(_X,_weights,_biases):
 
     #Fully Connected Layer 1
     dense1 = tf.reshape(conv25,[-1,_weights['wd27'].get_shape().as_list()[0]])
-    dense1 = tf.leaky_relu(tf.add(tf.matmul(dense1,_weights['wd27']),_biases['bd27']))
+    dense1 = leaky_relu(tf.add(tf.matmul(dense1,_weights['wd27']),_biases['bd27']))
 
-    return dense1
+    return dense1,conv2
 
 def assign_weights_func(layer_number,weights,layer_name):
     l = googleNet.layers[layer_number]
     weights[layer_name] = tf.assign(weights[layer_name],l.weights)
     if(l.type == "CONVOLUTIONAL"):
-        weights[layer_name] = tf.reshape(weights[layer_name],[l.n,l.c,l.size,l.size])
-        weights[layer_name] = tf.transpose(weights[layer_name],[2,3,1,0])
+        #weights[layer_name] = tf.reshape(weights[layer_name],[l.n,l.c,l.size,l.size])
+        #weights[layer_name] = tf.transpose(weights[layer_name],[2,3,1,0])
+        weights[layer_name] = tf.reshape(weights[layer_name],[l.n,l.size,l.size,l.c])
+        weights[layer_name] = tf.transpose(weights[layer_name],[1,2,3,0])
     elif(l.type == "CONNECTED"):
         weights[layer_name] = tf.reshape(weights[layer_name],[l.input_size,l.output_size])
     return weights[layer_name]
@@ -170,23 +176,37 @@ def assign_biases_func(layer_number,biases,layer_name):
     return biases[layer_name]
 
 #read an image
-im = Image.open('/home/lixueting/Documents/TensorFlow_Practice/eagle.jpg')
+
+im = Image.open('/home/xuetingli/Documents/YOLO.Tensorflow/TensorFlow_Practice/outfile.jpg')
 ImageSize = im.size
 print im.size
 WARP_LENGTH = 224
 if(ImageSize[0] <= ImageSize[1]):
     width = int(ImageSize[1] * WARP_LENGTH / ImageSize[0])
     im = im.resize((WARP_LENGTH,width),Image.ANTIALIAS)
+    imSize = im.size
+    print "the image size is ",imSize[1]
+    im = im.crop((0,imSize[1]/2-112,224,imSize[1]/2+112))
 else:
     height = int(ImageSize[0] * WARP_LENGTH / ImageSize[1])
     im = im.resize((height,WARP_LENGTH),Image.ANTIALIAS)
+    imSize = im.size
+    print "the image size is ",imSize[0]
+    im = im.crop((imSize[0]/2-112,0,imSize[0]/2+112,224))
+
 im.save('eagle_resize.jpg')
 
 img = misc.imread('eagle_resize.jpg')
-img_tf = tf.Variable(img)
-img_tf = tf.image.resize_image_with_crop_or_pad(img_tf, 224, 224)
+img_tf = tf.Variable(img/255.0)
+#img_tf = tf.image.resize_image_with_crop_or_pad(img_tf, 224, 224)
 #img_tf = tf.cast(img_tf, tf.float32)
 
+'''
+img = np.zeros((224,224,3))
+img_tf = tf.Variable(img)
+import scipy
+scipy.misc.imsave('outfile.jpg', img)
+'''
 #Read and assign weights
 weights,biases = paramters_variables(FLAGS.n_classes)
 googleNet = ReadGoogleNetWeights(os.path.join(os.getcwd(),'extraction.weights'))
@@ -201,24 +221,32 @@ for i in range(googleNet.layer_number):
         biases['wd'+str(i+1)] = assign_biases_func(i,biases,'bd'+str(i+1))
 
 #feed forward process
-out = feed_forward(img_tf,weights,biases)
+[out,conv2] = feed_forward(img_tf,weights,biases)
 
 sess = tf.Session()
 sess.run(tf.initialize_all_variables())
-four = sess.run([weights['wc2'],weights['wc4'],weights['wc6'],weights['wc7'],weights['wc8'],weights['wc9'],weights['wc11'],
+
+four = sess.run([out,conv2,weights['wc2'],weights['wc4'],weights['wc6'],weights['wc7'],weights['wc8'],weights['wc9'],weights['wc11'],
                 weights['wc12'],weights['wc13'],weights['wc14'],weights['wc15'],weights['wc16'],weights['wc17'],weights['wc18'],
                 weights['wc19'],weights['wc20'],weights['wc22'],weights['wc23'],weights['wc24'],weights['wc25'],weights['wd27'],
                 biases['bc2'],biases['bc4'],biases['bc6'],biases['bc7'],biases['bc8'],biases['bc9'],biases['bc11'],
                 biases['bc12'],biases['bc13'],biases['bc14'],biases['bc15'],biases['bc16'],biases['bc17'],biases['bc18'],
-                biases['bc19'],biases['bc20'],biases['bc22'],biases['bc23'],biases['bc24'],biases['bc25'],biases['bd27'],out,img_tf])
-print np.argmax(four[42])
-print four[42]
+                biases['bc19'],biases['bc20'],biases['bc22'],biases['bc23'],biases['bc24'],biases['bc25'],biases['bd27'],img_tf])
+
+#four = sess.run([cropped,conv2,weights['wc2'],biases['bc2'],img_tf])
+
+print four[1]
+print np.argmax(four[0])
+#print four[42]
+print four[len(four)-1][...,...,0]
 
 
+'''
 import matplotlib.pyplot as plt
 fig = plt.figure()
 fig.add_subplot(1,2,1)
-plt.imshow(im)
+plt.imshow(img)
 fig.add_subplot(1,2,2)
-plt.imshow(four[43])
+plt.imshow(four[44])
 plt.show()
+'''

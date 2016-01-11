@@ -16,8 +16,8 @@ max_batches=500000
 crop_height=224
 crop_width=224
 flip=1
-saturation=0
-exposure=0
+saturation=1
+exposure=1
 angle=0
 
 [convolutional]
