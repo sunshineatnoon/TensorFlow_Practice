@@ -156,16 +156,16 @@ def feed_forward(_X,_weights,_biases):
     dense1 = tf.reshape(conv25,[-1,_weights['wd27'].get_shape().as_list()[0]])
     dense1 = leaky_relu(tf.add(tf.matmul(dense1,_weights['wd27']),_biases['bd27']))
 
-    return dense1,conv2
+    return dense1,cropped
 
 def assign_weights_func(layer_number,weights,layer_name):
     l = googleNet.layers[layer_number]
     weights[layer_name] = tf.assign(weights[layer_name],l.weights)
     if(l.type == "CONVOLUTIONAL"):
-        #weights[layer_name] = tf.reshape(weights[layer_name],[l.n,l.c,l.size,l.size])
-        #weights[layer_name] = tf.transpose(weights[layer_name],[2,3,1,0])
-        weights[layer_name] = tf.reshape(weights[layer_name],[l.n,l.size,l.size,l.c])
-        weights[layer_name] = tf.transpose(weights[layer_name],[1,2,3,0])
+        weights[layer_name] = tf.reshape(weights[layer_name],[l.n,l.c,l.size,l.size])
+        weights[layer_name] = tf.transpose(weights[layer_name],[3,2,1,0])
+        #weights[layer_name] = tf.reshape(weights[layer_name],[l.c,l.size,l.size,l.n])
+        #weights[layer_name] = tf.transpose(weights[layer_name],[1,2,3,0])
     elif(l.type == "CONNECTED"):
         weights[layer_name] = tf.reshape(weights[layer_name],[l.input_size,l.output_size])
     return weights[layer_name]
@@ -221,12 +221,12 @@ for i in range(googleNet.layer_number):
         biases['wd'+str(i+1)] = assign_biases_func(i,biases,'bd'+str(i+1))
 
 #feed forward process
-[out,conv2] = feed_forward(img_tf,weights,biases)
+[out,cropped] = feed_forward(img_tf,weights,biases)
 
 sess = tf.Session()
 sess.run(tf.initialize_all_variables())
 
-four = sess.run([out,conv2,weights['wc2'],weights['wc4'],weights['wc6'],weights['wc7'],weights['wc8'],weights['wc9'],weights['wc11'],
+four = sess.run([cropped,out,weights['wc2'],weights['wc4'],weights['wc6'],weights['wc7'],weights['wc8'],weights['wc9'],weights['wc11'],
                 weights['wc12'],weights['wc13'],weights['wc14'],weights['wc15'],weights['wc16'],weights['wc17'],weights['wc18'],
                 weights['wc19'],weights['wc20'],weights['wc22'],weights['wc23'],weights['wc24'],weights['wc25'],weights['wd27'],
                 biases['bc2'],biases['bc4'],biases['bc6'],biases['bc7'],biases['bc8'],biases['bc9'],biases['bc11'],
@@ -235,10 +235,9 @@ four = sess.run([out,conv2,weights['wc2'],weights['wc4'],weights['wc6'],weights[
 
 #four = sess.run([cropped,conv2,weights['wc2'],biases['bc2'],img_tf])
 
-print four[1]
-print np.argmax(four[0])
+print four[0]
+#print np.argmax(four[0])
 #print four[42]
-print four[len(four)-1][...,...,0]
 
 
 '''
